@@ -1,0 +1,1980 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>咖啡廳打工日記 — 3D 人物互動版</title>
+<style>
+  :root{
+    --ink:#241712;
+    --paper:#EFE3C9;
+    --panel:#FBF4E4;
+    --panel-2:#F3E7CC;
+    --espresso:#2A1C14;
+    --pine:#3F6657;
+    --pine-light:#5B8873;
+    --brass:#B07D1F;
+    --cherry:#B3432B;
+    --line:rgba(36,23,18,.16);
+    --shadow:rgba(36,23,18,.22);
+    --sky-top:#4a3626;
+    --sky-bot:#2a1e15;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#EDE2D0;
+      --paper:#1B140F;
+      --panel:#241A13;
+      --panel-2:#2C2117;
+      --espresso:#120B07;
+      --pine:#6FA089;
+      --pine-light:#8CBBA5;
+      --brass:#E0AC4C;
+      --cherry:#E2694F;
+      --line:rgba(237,226,208,.14);
+      --shadow:rgba(0,0,0,.45);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#EDE2D0; --paper:#1B140F; --panel:#241A13; --panel-2:#2C2117;
+    --espresso:#120B07; --pine:#6FA089; --pine-light:#8CBBA5;
+    --brass:#E0AC4C; --cherry:#E2694F; --line:rgba(237,226,208,.14); --shadow:rgba(0,0,0,.45);
+  }
+  :root[data-theme="light"]{
+    --ink:#241712; --paper:#EFE3C9; --panel:#FBF4E4; --panel-2:#F3E7CC;
+    --espresso:#2A1C14; --pine:#3F6657; --pine-light:#5B8873;
+    --brass:#B07D1F; --cherry:#B3432B; --line:rgba(36,23,18,.16); --shadow:rgba(36,23,18,.22);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; height:100%; }
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei","Segoe UI",system-ui,sans-serif;
+    line-height:1.5;
+    overflow:hidden;
+    height:100vh;
+    width:100vw;
+  }
+  .mono{ font-family:ui-monospace,"Cascadia Mono","SF Mono",Consolas,"Liberation Mono",monospace; font-variant-numeric:tabular-nums; }
+
+  /* ---------- 3D canvas ---------- */
+  #scene{
+    position:fixed; inset:0;
+    display:block;
+    width:100%; height:100%;
+    outline:none;
+    background:linear-gradient(180deg,var(--sky-top),var(--sky-bot));
+    transition:filter .2s;
+  }
+  #scene.dimmed{ filter:blur(2px) saturate(.75) brightness(.85); }
+
+  /* ---------- Header ---------- */
+  .topbar{
+    position:fixed; top:12px; left:12px; right:12px;
+    z-index:30;
+    background:var(--espresso);
+    color:#F2E6CF;
+    border-radius:14px;
+    padding:12px 18px;
+    display:flex;
+    align-items:center;
+    gap:18px;
+    flex-wrap:wrap;
+    box-shadow:0 6px 18px var(--shadow);
+  }
+  .topbar::before{
+    content:"☕ 咖啡廳打工日記 · 3D";
+    font-weight:800;
+    letter-spacing:.04em;
+    font-size:1.05rem;
+    margin-right:auto;
+    white-space:nowrap;
+  }
+  .stat{
+    display:flex; align-items:center; gap:6px;
+    font-size:.92rem;
+    white-space:nowrap;
+  }
+  .stat .label{ opacity:.7; font-size:.78rem; }
+  .stat .value{ font-weight:700; }
+  #heartsLabel{ color:#F08A6E; letter-spacing:1px; }
+  #comboLabel{ color:#E8C564; font-weight:800; opacity:0; transition:opacity .2s; }
+  #comboLabel.show{ opacity:1; }
+  #muteBtn{
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.2);
+    color:inherit;
+    border-radius:8px;
+    width:34px; height:34px;
+    font-size:1rem;
+    cursor:pointer;
+  }
+  #muteBtn:hover{ background:rgba(255,255,255,.16); }
+
+  /* ---------- Control hint ---------- */
+  #controlHint{
+    position:fixed; left:50%; bottom:14px; transform:translateX(-50%);
+    z-index:30;
+    background:var(--espresso);
+    color:#F2E6CF;
+    border-radius:999px;
+    padding:8px 18px;
+    font-size:.8rem;
+    display:flex; gap:14px;
+    box-shadow:0 6px 16px var(--shadow);
+    opacity:.92;
+    white-space:nowrap;
+  }
+  #controlHint kbd{
+    background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.25);
+    border-radius:4px;
+    padding:1px 6px;
+    font-family:inherit;
+    font-size:.78rem;
+    margin:0 2px;
+  }
+  #controlHint.hidden{ display:none; }
+
+  /* ---------- World overlay (billboards) ---------- */
+  #worldUI{
+    position:fixed; inset:0;
+    z-index:20;
+    pointer-events:none;
+    overflow:hidden;
+  }
+  #worldUI.dimmed{ filter:blur(2px) saturate(.75); }
+
+  #interactPrompt{
+    position:absolute; left:0; top:0;
+    transform:translate(-50%,-100%);
+    background:var(--espresso);
+    color:#F2E6CF;
+    border-radius:999px;
+    padding:5px 12px;
+    font-size:.8rem;
+    font-weight:700;
+    white-space:nowrap;
+    box-shadow:0 4px 10px var(--shadow);
+    display:none;
+  }
+  #interactPrompt kbd{
+    background:rgba(255,255,255,.18);
+    border-radius:4px;
+    padding:0 6px;
+    margin-right:4px;
+  }
+  #interactPrompt.show{ display:block; }
+
+  .seat-billboard{
+    position:absolute; left:0; top:0;
+    transform:translate(-50%,-100%);
+    pointer-events:none;
+    display:none;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+  }
+  .seat-billboard.show{ display:flex; }
+  .seat-billboard .pay-btn{ pointer-events:auto; }
+  .seat-billboard .billboard-inner.shake{ animation:shake .4s ease; }
+
+  #toastLayer{
+    position:absolute; inset:0;
+    pointer-events:none;
+  }
+  .float-toast{
+    position:absolute;
+    transform:translate(-50%,0);
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:4px 10px;
+    border-radius:999px;
+    font-size:.82rem;
+    font-weight:700;
+    box-shadow:0 4px 10px var(--shadow);
+    animation:floatUp 1.2s ease-out forwards;
+    white-space:nowrap;
+  }
+  .float-toast.pine{ color:var(--pine-light); border-color:var(--pine); }
+  .float-toast.cherry{ color:var(--cherry); border-color:var(--cherry); }
+  @keyframes floatUp{
+    0%{ transform:translate(-50%,0); opacity:1; }
+    100%{ transform:translate(-50%,-48px); opacity:0; }
+  }
+
+  /* ---------- Shared billboard/bubble styles (reused from 2D edition) ---------- */
+  .bubble{ font-size:.85rem; opacity:.92; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:4px 9px; box-shadow:0 2px 8px var(--shadow); }
+  .bubble.think{ font-size:1.1rem; letter-spacing:2px; opacity:.7; padding:2px 10px; }
+  .bubble.eating{ font-size:.8rem; }
+  .bubble.happy{ color:var(--pine-light); font-weight:700; }
+  .bubble.angry{ color:var(--cherry); font-weight:700; }
+  .bubble.pay{ display:flex; flex-direction:column; align-items:center; gap:6px; background:transparent; border:none; box-shadow:none; padding:0; }
+
+  .ticket{
+    background:var(--panel);
+    border:1px dashed var(--line);
+    border-radius:8px;
+    padding:6px 9px;
+    animation:ticketPrint .22s ease-out;
+    transform-origin:top center;
+    min-width:100px;
+    box-shadow:0 2px 8px var(--shadow);
+  }
+  .ticket-items{ display:flex; gap:4px; justify-content:center; font-size:1.2rem; }
+  .order-chip{ opacity:.95; position:relative; }
+  .order-chip.done{ opacity:.25; }
+  .order-chip.done::after{ content:"✓"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:.75rem; color:var(--pine); }
+  .ticket-total{ margin-top:3px; font-size:.78rem; font-weight:700; opacity:.7; }
+  @keyframes ticketPrint{
+    0%{ transform:scaleY(0); opacity:0; }
+    100%{ transform:scaleY(1); opacity:1; }
+  }
+
+  .pay-btn{
+    background:var(--brass);
+    color:#1D1304;
+    border:none;
+    border-radius:999px;
+    padding:6px 14px;
+    font-weight:700;
+    font-size:.82rem;
+    cursor:pointer;
+  }
+  .pay-btn:hover{ filter:brightness(1.08); }
+
+  .patience-track{
+    width:70px; height:6px;
+    background:rgba(0,0,0,.25);
+    border-radius:999px;
+    overflow:hidden;
+    box-shadow:0 1px 4px var(--shadow);
+  }
+  .patience-fill{ height:100%; width:100%; background:var(--pine); }
+  .patience-fill.warn{ background:#D6A431; }
+  .patience-fill.danger{ background:var(--cherry); }
+
+  @keyframes shake{
+    0%,100%{ transform:translateX(0); }
+    20%{ transform:translateX(-6px); }
+    40%{ transform:translateX(6px); }
+    60%{ transform:translateX(-4px); }
+    80%{ transform:translateX(4px); }
+  }
+
+  button:focus-visible{ outline:2px solid var(--pine); outline-offset:2px; }
+  #scene:focus-visible{ outline:3px solid var(--brass); outline-offset:-3px; }
+
+  /* ---------- Modals ---------- */
+  .modal-overlay{
+    position:fixed; inset:0;
+    background:rgba(10,6,3,.55);
+    display:flex; align-items:center; justify-content:center;
+    padding:16px;
+    z-index:100;
+  }
+  .modal-overlay.hidden{ display:none; }
+  .modal-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:24px;
+    max-width:420px;
+    width:100%;
+    box-shadow:0 20px 50px var(--shadow);
+    max-height:86vh;
+    overflow-y:auto;
+  }
+  .modal-card h2{ margin:0 0 6px; font-size:1.3rem; }
+  .modal-card p{ opacity:.8; font-size:.9rem; }
+  .modal-card ul{ font-size:.85rem; opacity:.85; padding-left:1.1em; }
+  .modal-card ul li{ margin-bottom:4px; }
+  .cta-btn{
+    background:var(--pine);
+    color:#fff;
+    border:none;
+    border-radius:10px;
+    padding:12px 18px;
+    font-size:1rem;
+    font-weight:700;
+    cursor:pointer;
+    width:100%;
+    margin-top:14px;
+  }
+  .cta-btn:hover{ filter:brightness(1.07); }
+  .ghost-btn{
+    background:transparent; color:var(--ink); opacity:.6;
+    border:none; width:100%; margin-top:6px; padding:8px; cursor:pointer; font-size:.88rem;
+  }
+  .ghost-btn:hover{ opacity:.9; }
+  .summary-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0; }
+  .summary-grid .cell{ background:var(--panel-2); border-radius:10px; padding:10px; }
+  .summary-grid .cell .k{ font-size:.72rem; opacity:.6; }
+  .summary-grid .cell .v{ font-size:1.15rem; font-weight:800; }
+  #sumHeartNote{ display:block; margin-top:4px; font-size:.85rem; color:var(--pine-light); font-weight:700; }
+
+  /* ---------- Station / shelf modal (menu rows reused look) ---------- */
+  .queue-badge{
+    font-size:.72rem;
+    background:rgba(0,0,0,.08);
+    border-radius:999px;
+    padding:3px 8px;
+    opacity:.7;
+    white-space:nowrap;
+  }
+  .station-progress{ margin:10px 0 14px; }
+  .station-progress .progress-label{ font-size:.78rem; opacity:.65; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .progress-track{ width:100%; height:7px; background:rgba(0,0,0,.12); border-radius:999px; overflow:hidden; }
+  .progress-fill{ height:100%; width:0%; background:var(--pine); transition:width .15s linear; }
+  .menu-grid{ display:flex; flex-direction:column; gap:6px; }
+  .menu-btn{
+    display:flex; align-items:center; gap:8px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:9px 12px;
+    cursor:pointer;
+    color:var(--ink);
+    font-size:.88rem;
+    text-align:left;
+  }
+  .menu-btn:hover:not(:disabled){ border-color:var(--pine); }
+  .menu-btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .menu-btn.kbd-selected{ border-color:var(--pine); background:var(--panel); box-shadow:0 0 0 2px var(--pine) inset; }
+  .menu-icon{ font-size:1.1rem; }
+  .menu-name{ flex:1; }
+  .menu-price{ opacity:.7; }
+  .shelf-empty{ opacity:.5; font-size:.85rem; padding:10px 2px; }
+
+  /* ---------- Change drawer ---------- */
+  #drawerModal .modal-card{ max-width:460px; }
+  .drawer-rows{ display:flex; flex-direction:column; gap:6px; margin:12px 0; }
+  .drawer-row{ display:flex; justify-content:space-between; font-size:.92rem; }
+  .drawer-row .k{ opacity:.65; }
+  .drawer-row.total .v{ font-weight:800; color:var(--brass); }
+  .denoms{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:10px 0; }
+  .denom-btn{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 4px;
+    font-weight:700;
+    cursor:pointer;
+    color:var(--ink);
+  }
+  .denom-btn:hover{ border-color:var(--brass); }
+  #drawerBreakdown{ display:flex; flex-wrap:wrap; gap:6px; min-height:26px; margin:6px 0; }
+  #drawerBreakdown .chip{ background:var(--panel-2); border-radius:999px; padding:2px 8px; font-size:.78rem; }
+  #drawerBreakdown .muted{ opacity:.5; font-size:.78rem; }
+  .drawer-actions{ display:flex; gap:8px; margin-top:12px; }
+  .drawer-actions button{ flex:1; border-radius:10px; padding:10px; font-weight:700; cursor:pointer; border:1px solid var(--line); }
+  #drawerClearBtn{ background:var(--panel-2); color:var(--ink); }
+  #drawerConfirmBtn{ background:var(--pine); color:#fff; border:none; }
+  #drawerModal .modal-card.shake{ animation:shake .4s ease; }
+
+  @media (max-width:700px){
+    .topbar::before{ font-size:.9rem; }
+    .topbar{ gap:8px 12px; padding:10px 12px; }
+    #controlHint{ font-size:.72rem; padding:6px 12px; gap:10px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .seat-billboard .billboard-inner.shake, #drawerModal .modal-card.shake{ animation:none; }
+    .float-toast{ animation:none; opacity:0; }
+    .ticket{ animation:none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene" tabindex="0" aria-label="3D 咖啡廳場景。使用 W、A、S、D 或方向鍵移動，按 E 與附近目標互動。"></canvas>
+
+<header class="topbar">
+  <div class="stat"><span class="label">第</span><span class="value" id="dayLabel">1 天</span></div>
+  <div class="stat">⏱ <span class="value mono" id="timeLabel">0:00</span></div>
+  <div class="stat">💰 <span class="value mono" id="moneyLabel">$0</span></div>
+  <div class="stat">⭐ <span class="value mono" id="scoreLabel">0</span></div>
+  <div class="stat" id="heartsLabel">♥♥♥</div>
+  <div class="stat" id="comboLabel">🔥 x0</div>
+  <button id="muteBtn" title="靜音切換" aria-label="靜音" aria-pressed="false">🔈</button>
+</header>
+
+<div id="controlHint" class="hidden"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>↑↓←→</kbd> 移動</span><span><kbd>E</kbd> 互動</span></div>
+
+<div id="worldUI">
+  <div id="toastLayer"></div>
+  <div id="interactPrompt"><kbd>E</kbd><span id="interactPromptText" aria-live="polite"></span></div>
+  <div class="seat-billboard" id="billboard-0"><div class="billboard-inner"></div></div>
+  <div class="seat-billboard" id="billboard-1"><div class="billboard-inner"></div></div>
+  <div class="seat-billboard" id="billboard-2"><div class="billboard-inner"></div></div>
+  <div class="seat-billboard" id="billboard-3"><div class="billboard-inner"></div></div>
+</div>
+
+<!-- Start modal -->
+<div class="modal-overlay" id="startModal">
+  <div class="modal-card" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="startTitle">
+    <h2 id="startTitle">☕ 咖啡廳打工日記 · 3D</h2>
+    <p>客人會不定時走進店裡入座，請在耐心耗盡前完成點餐、製作、送餐與收銀找錢。</p>
+    <ul>
+      <li><b>WASD / 方向鍵</b>移動咖啡師角色</li>
+      <li>走近<b>製作站</b>，按 <b>E</b> 開啟選單；用 <b>↑ / ↓</b> 選品項、<b>Enter / E</b> 排隊製作；按 <b>Tab</b> 導覽按鈕、<b>Enter / 空白鍵</b>操作。除導覽與指定操作鍵外，其他按鍵可關閉工作視窗</li>
+      <li>走近<b>出餐檯</b>，按 <b>E</b> 拿取做好的餐點端在手上；多份餐點時用 <b>↑ / ↓</b> 選擇、<b>Enter</b> 取餐</li>
+      <li>手上拿著不需要的餐點時，走近<b>垃圾桶</b>並按 <b>E</b> 丟棄</li>
+      <li>端著餐點走到<b>點餐的客人桌前</b>，按 <b>E</b> 送餐</li>
+      <li>客人用餐完畢會顯示「💰」，走近按 <b>E</b> 開啟收銀機，湊出正確找零</li>
+      <li>客人生氣離場會扣商譽 ♥，商譽歸零即結束營業</li>
+    </ul>
+    <button class="cta-btn" id="startBtn">開始營業</button>
+  </div>
+</div>
+
+<!-- Day summary modal -->
+<div class="modal-overlay hidden" id="daySummaryModal">
+  <div class="modal-card" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="daySummaryTitle">
+    <h2 id="daySummaryTitle">今日結算</h2>
+    <p>營業時間結束，辛苦了！</p>
+    <div class="summary-grid">
+      <div class="cell"><div class="k">服務客人</div><div class="v mono" id="sumServed">0</div></div>
+      <div class="cell"><div class="k">生氣離場</div><div class="v mono" id="sumAngry">0</div></div>
+      <div class="cell"><div class="k">今日收入</div><div class="v mono" id="sumMoney">$0</div></div>
+      <div class="cell"><div class="k">今日分數</div><div class="v mono" id="sumScore">0</div></div>
+    </div>
+    <span id="sumHeartNote"></span>
+    <button class="cta-btn" id="nextDayBtn">進入下一天</button>
+  </div>
+</div>
+
+<!-- Game over modal -->
+<div class="modal-overlay hidden" id="gameOverModal">
+  <div class="modal-card" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
+    <h2 id="gameOverTitle">😮‍💨 打烊了…</h2>
+    <p>商譽耗盡，咖啡廳今天只能先休息一下。</p>
+    <div class="summary-grid">
+      <div class="cell"><div class="k">經營天數</div><div class="v mono" id="goDays">0</div></div>
+      <div class="cell"><div class="k">服務總人數</div><div class="v mono" id="goServed">0</div></div>
+      <div class="cell"><div class="k">總收入</div><div class="v mono" id="goMoney">$0</div></div>
+      <div class="cell"><div class="k">總分數</div><div class="v mono" id="goScore">0</div></div>
+      <div class="cell"><div class="k">最高連擊</div><div class="v mono" id="goCombo">0</div></div>
+    </div>
+    <button class="cta-btn" id="restartBtn">重新開始</button>
+  </div>
+</div>
+
+<!-- Station modal -->
+<div class="modal-overlay hidden" id="stationModal">
+  <div class="modal-card" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="stationModalTitle">
+    <h2 id="stationModalTitle">☕ 咖啡機</h2>
+    <div class="station-progress">
+      <div class="progress-label"><span id="stationModalLabel">待機中</span><span class="queue-badge" id="stationModalBadge">排隊 0/3</span></div>
+      <div class="progress-track"><div class="progress-fill" id="stationModalFill"></div></div>
+    </div>
+    <div class="menu-grid" id="stationModalMenu"></div>
+    <button class="ghost-btn" id="stationModalCloseBtn">關閉</button>
+  </div>
+</div>
+
+<!-- Shelf (pass shelf) modal -->
+<div class="modal-overlay hidden" id="shelfModal">
+  <div class="modal-card" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="shelfModalTitle">
+    <h2 id="shelfModalTitle">📦 出餐檯</h2>
+    <p>選擇一份端去送餐</p>
+    <div class="menu-grid" id="shelfList"></div>
+    <button class="ghost-btn" id="shelfCloseBtn">關閉</button>
+  </div>
+</div>
+
+<!-- Change drawer modal -->
+<div class="modal-overlay hidden" id="drawerModal">
+  <div class="modal-card" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="drawerModalTitle">
+    <h2 id="drawerModalTitle">🧾 收銀機</h2>
+    <div class="drawer-rows">
+      <div class="drawer-row"><span class="k">應付金額</span><span class="v mono" id="drawerDue">$0</span></div>
+      <div class="drawer-row"><span class="k">客人付的錢</span><span class="v mono" id="drawerPaid">$0</span></div>
+      <div class="drawer-row total"><span class="k">應找零</span><span class="v mono" id="drawerChangeNeeded">$0</span></div>
+      <div class="drawer-row"><span class="k">目前湊出</span><span class="v mono" id="drawerGiven">$0</span></div>
+    </div>
+    <p>鍵盤：用 <b>方向鍵</b> 選面額、<b>Enter</b> 加入；按 <b>Shift + Enter</b> 送出找零，<b>Backspace</b> 清空。</p>
+    <div class="denoms">
+      <button class="denom-btn mono" data-v="1000">$1000</button>
+      <button class="denom-btn mono" data-v="500">$500</button>
+      <button class="denom-btn mono" data-v="100">$100</button>
+      <button class="denom-btn mono" data-v="50">$50</button>
+      <button class="denom-btn mono" data-v="10">$10</button>
+      <button class="denom-btn mono" data-v="5">$5</button>
+      <button class="denom-btn mono" data-v="1">$1</button>
+    </div>
+    <div id="drawerBreakdown"><span class="muted">尚未選擇面額</span></div>
+    <div class="drawer-actions">
+      <button id="drawerClearBtn">清空</button>
+      <button id="drawerConfirmBtn">確認找零</button>
+    </div>
+    <button class="ghost-btn" id="drawerCloseBtn">暫時關閉</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+
+"use strict";
+
+/* ========================================================================
+   SECTION 1 — simulation layer (menu, pricing, customer state machine,
+   difficulty curve, scoring, day/game flow). Rules are carried over from
+   the 2D edition (index-2d.html / SPEC.md) unchanged — only how the player
+   issues commands (walk + interact instead of clicking panels) and how
+   feedback is shown (3D billboards instead of static cards) differs.
+   ======================================================================== */
+
+const TICK_MS = 100;
+
+const MENU = {
+  coffee: { label:"咖啡機", icon:"☕", items:[
+    { id:"americano", name:"美式咖啡", price:60, time:3000, icon:"☕" },
+    { id:"latte", name:"拿鐵", price:80, time:4000, icon:"🥛" },
+    { id:"cappuccino", name:"卡布奇諾", price:90, time:4000, icon:"🍵" },
+  ]},
+  cake: { label:"蛋糕櫃", icon:"🍰", items:[
+    { id:"cheesecake", name:"起司蛋糕", price:120, time:3000, icon:"🍰" },
+    { id:"chococake", name:"巧克力蛋糕", price:130, time:3000, icon:"🍫" },
+    { id:"tiramisu", name:"提拉米蘇", price:140, time:3000, icon:"🍮" },
+  ]},
+  bread: { label:"麵包架", icon:"🥐", items:[
+    { id:"croissant", name:"可頌", price:50, time:2000, icon:"🥐" },
+    { id:"bagel", name:"貝果", price:55, time:2000, icon:"🥯" },
+    { id:"cinnamontoast", name:"肉桂吐司", price:65, time:3000, icon:"🍞" },
+  ]},
+};
+
+const ALL_ITEMS = [];
+const ITEM_BY_ID = {};
+Object.keys(MENU).forEach(function(key){
+  const cat = MENU[key];
+  cat.items.forEach(function(it){
+    it.cat = key;
+    if(!it.icon) it.icon = cat.icon;
+    ALL_ITEMS.push(it);
+    ITEM_BY_ID[it.id] = it;
+  });
+});
+
+const DENOMS = [1000,500,100,50,10,5,1];
+
+let game = {
+  state:"start", day:1, dayTimeLeft:0, spawnTimer:0,
+  seatsCount:2, seats:[null,null],
+  money:0, score:0, hearts:3, combo:0, bestCombo:0,
+  dayStats:{ served:0, angry:0, moneyToday:0, scoreToday:0 },
+  totals:{ served:0, angry:0, daysPlayed:0 },
+  _perfectDay:false,
+};
+const stations = {
+  coffee:{ queue:[], current:null },
+  cake:{ queue:[], current:null },
+  bread:{ queue:[], current:null },
+};
+const passTray = [];
+let drawerSeatIdx = null, drawerGiven = 0, drawerCounts = {}, drawerError = false;
+let muted = false;
+let uidCounter = 0;
+
+function nextUid(){ return ++uidCounter; }
+function randRange(min,max){ return min + Math.random()*(max-min); }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function fmtTime(ms){
+  const s = Math.ceil(Math.max(0,ms)/1000);
+  const m = Math.floor(s/60), r = s%60;
+  return m + ":" + String(r).padStart(2,"0");
+}
+function weightedPick(pairs){
+  const total = pairs.reduce(function(s,p){ return s+p[1]; },0);
+  let r = Math.random()*total;
+  for(let i=0;i<pairs.length;i++){
+    if(r < pairs[i][1]) return pairs[i][0];
+    r -= pairs[i][1];
+  }
+  return pairs[pairs.length-1][0];
+}
+function sampleWithoutReplacement(arr,k){
+  const pool = arr.slice();
+  const out = [];
+  for(let i=0;i<k && pool.length>0;i++){
+    const idx = Math.floor(Math.random()*pool.length);
+    out.push(pool.splice(idx,1)[0]);
+  }
+  return out;
+}
+
+function seatsForDay(day){ return Math.min(2 + Math.floor((day-1)/2), 4); }
+function patienceMaxForDay(day){ return Math.max(30000 - (day-1)*2000, 14000); }
+function spawnRangeForDay(day){
+  const reduce = (day-1)*300;
+  return [Math.max(4000-reduce,2000), Math.max(7000-reduce,4000)];
+}
+
+// ---------- audio ----------
+let audioCtx = null;
+function ensureAudio(){
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if(AC) audioCtx = new AC();
+  }
+  if(audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  return audioCtx;
+}
+function playTone(freq,offset,duration,type,gainVal){
+  if(muted) return;
+  const ctx = ensureAudio();
+  if(!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || "sine";
+  osc.frequency.value = freq;
+  gain.gain.value = gainVal || 0.12;
+  osc.connect(gain).connect(ctx.destination);
+  const t0 = ctx.currentTime + (offset||0);
+  osc.start(t0);
+  gain.gain.setValueAtTime(gain.gain.value, t0);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0+duration);
+  osc.stop(t0+duration+0.03);
+}
+function playSound(kind){
+  if(muted) return;
+  switch(kind){
+    case "order": playTone(880,0,0.12,"sine",0.1); break;
+    case "ready": playTone(660,0,0.08,"triangle",0.09); break;
+    case "deliver": playTone(523,0,0.08,"sine",0.11); playTone(784,0.08,0.1,"sine",0.11); break;
+    case "fail": playTone(180,0,0.18,"sawtooth",0.13); break;
+    case "pay": playTone(988,0,0.08,"square",0.09); playTone(1318,0.09,0.12,"square",0.09); break;
+    case "angry": playTone(300,0,0.15,"sawtooth",0.1); playTone(200,0.12,0.2,"sawtooth",0.1); break;
+    case "dayend": playTone(523,0,0.1,"triangle",0.1); playTone(659,0.1,0.1,"triangle",0.1); playTone(784,0.2,0.15,"triangle",0.1); break;
+    case "gameover": playTone(220,0,0.3,"sawtooth",0.13); playTone(160,0.25,0.4,"sawtooth",0.13); break;
+  }
+}
+
+// ---------- customer lifecycle ----------
+function generateOrder(c){
+  const k = weightedPick([[1,0.5],[2,0.35],[3,0.15]]);
+  const chosen = sampleWithoutReplacement(ALL_ITEMS, k);
+  c.order = chosen.map(function(it){ return { itemId:it.id, delivered:false }; });
+  c.total = chosen.reduce(function(s,it){ return s+it.price; },0);
+  const denoms = [100,500,1000];
+  c.paid = Math.random() < 0.15 ? c.total : denoms.find(function(d){ return d >= c.total; });
+  c.changeDue = c.paid - c.total;
+  c.patienceMax = patienceMaxForDay(game.day);
+  c.patience = c.patienceMax;
+}
+
+function trySpawnCustomer(){
+  const freeIdx = game.seats.findIndex(function(s){ return s === null; });
+  if(freeIdx === -1) return;
+  const c = {
+    id: nextUid(), seatIdx: freeIdx, colors: pickCustomerColors(),
+    phase: "thinking", timer: 900,
+    order: [], total: 0, paid: 0, changeDue: 0,
+    patience: 0, patienceMax: 0, leaveTimer: 0, flashError: false,
+  };
+  game.seats[freeIdx] = c;
+  spawnCustomerVisual(c, freeIdx);
+}
+
+function angryLeave(idx){
+  const c = game.seats[idx];
+  if(!c) return;
+  c.phase = "leaving_angry";
+  c.leaveTimer = 900;
+  game.hearts = Math.max(0, game.hearts-1);
+  game.combo = 0;
+  game.dayStats.angry += 1;
+  playSound("angry");
+  showWorldToast(idx, "😠 顧客生氣地離開了", "cherry");
+  startLeaving(idx, false);
+  game.seats[idx] = null;
+  if(game.hearts <= 0 && game.state === "playing"){
+    triggerGameOver();
+  }
+}
+
+function updateCustomer(c, idx){
+  switch(c.phase){
+    case "thinking":
+      c.timer -= TICK_MS;
+      if(c.timer <= 0){ generateOrder(c); c.phase = "ordered"; playSound("order"); }
+      break;
+    case "ordered":
+      c.patience -= TICK_MS;
+      if(c.patience <= 0) angryLeave(idx);
+      break;
+    case "eating":
+      c.timer -= TICK_MS;
+      if(c.timer <= 0) c.phase = "ready_to_pay";
+      break;
+    case "ready_to_pay":
+      c.patience -= TICK_MS;
+      if(c.patience <= 0) angryLeave(idx);
+      break;
+  }
+}
+
+function flashSeatError(idx){
+  const c = game.seats[idx];
+  if(!c) return;
+  c.flashError = true;
+  renderBillboards();
+  setTimeout(function(){ if(c) c.flashError = false; renderBillboards(); }, 400);
+}
+
+// ---------- delivery (now driven by walking + carrying, see SECTION 3) ----------
+function tryDeliver(idx){
+  const c = game.seats[idx];
+  if(!c || c.phase !== "ordered") return;
+  if(!player.carrying){ flashSeatError(idx); playSound("fail"); return; }
+  const line = c.order.find(function(o){ return o.itemId === player.carrying && !o.delivered; });
+  if(!line){ flashSeatError(idx); playSound("fail"); return; }
+  line.delivered = true;
+  c.patience = c.patienceMax;
+  const deliveredName = ITEM_BY_ID[player.carrying].name;
+  clearCarried();
+  playSound("deliver");
+  showWorldToast(idx, "送出 " + deliveredName, "pine");
+  if(c.order.every(function(o){ return o.delivered; })){
+    c.phase = "eating";
+    c.timer = 1500;
+  }
+  renderBillboards();
+}
+
+// ---------- stations ----------
+function updateStationTick(key){
+  const st = stations[key];
+  if(st.current){
+    st.current.remaining -= TICK_MS;
+    if(st.current.remaining <= 0){
+      passTray.push({ uid: nextUid(), itemId: st.current.itemId, categoryKey: key });
+      playSound("ready");
+      st.current = null;
+      renderShelfVisual();
+    }
+  }
+  if(!st.current && st.queue.length > 0){
+    const itemId = st.queue.shift();
+    const def = ITEM_BY_ID[itemId];
+    st.current = { itemId: itemId, remaining: def.time, total: def.time };
+  }
+}
+
+function queueItem(cat, itemId){
+  const st = stations[cat];
+  const pending = (st.current?1:0) + st.queue.length;
+  if(pending >= 3) return;
+  st.queue.push(itemId);
+  renderStationModal();
+}
+
+// ---------- change drawer ----------
+function openChangeDrawer(idx){
+  const c = game.seats[idx];
+  if(!c || c.phase !== "ready_to_pay") return;
+  drawerSeatIdx = idx;
+  drawerGiven = 0;
+  drawerCounts = {};
+  DENOMS.forEach(function(d){ drawerCounts[d] = 0; });
+  renderDrawer();
+  focusModal(el.drawerModal);
+}
+function closeDrawer(){
+  drawerSeatIdx = null;
+  renderDrawer();
+  focusGameplay();
+}
+function addDenom(v){
+  if(drawerSeatIdx == null) return;
+  drawerGiven += v;
+  drawerCounts[v] = (drawerCounts[v]||0) + 1;
+  renderDrawer();
+}
+function clearDrawer(){
+  drawerGiven = 0;
+  DENOMS.forEach(function(d){ drawerCounts[d] = 0; });
+  renderDrawer();
+}
+function confirmDrawer(){
+  if(drawerSeatIdx == null) return;
+  const idx = drawerSeatIdx;
+  const c = game.seats[idx];
+  if(!c || c.phase !== "ready_to_pay"){ closeDrawer(); return; }
+  if(drawerGiven === c.changeDue){
+    game.money += c.total;
+    const speedRatio = clamp(c.patience / c.patienceMax, 0, 1);
+    const gained = Math.round(c.total/10 + speedRatio*20 + game.combo*2);
+    game.score += gained;
+    game.combo += 1;
+    game.bestCombo = Math.max(game.bestCombo, game.combo);
+    game.dayStats.served += 1;
+    game.dayStats.moneyToday += c.total;
+    game.dayStats.scoreToday += gained;
+    c.phase = "leaving_happy";
+    playSound("pay");
+    showWorldToast(idx, "+$" + c.total + " / +" + gained + "分", "pine");
+    startLeaving(idx, true);
+    game.seats[idx] = null;
+    closeDrawer();
+  } else {
+    drawerError = true;
+    c.patience = Math.max(1, c.patience - 1500);
+    playSound("fail");
+    renderDrawer();
+    setTimeout(function(){ drawerError = false; renderDrawer(); }, 400);
+  }
+}
+function renderDrawer(){
+  const open = drawerSeatIdx != null;
+  el.drawerModal.classList.toggle("hidden", !open);
+  if(!open) return;
+  const c = game.seats[drawerSeatIdx];
+  if(!c || c.phase !== "ready_to_pay"){ closeDrawer(); return; }
+  el.drawerDue.textContent = "$" + c.total;
+  el.drawerPaid.textContent = "$" + c.paid;
+  el.drawerChangeNeeded.textContent = "$" + c.changeDue;
+  el.drawerGiven.textContent = "$" + drawerGiven;
+  const chips = DENOMS.filter(function(d){ return drawerCounts[d] > 0; })
+    .map(function(d){ return '<span class="chip mono">$' + d + ' × ' + drawerCounts[d] + '</span>'; }).join("");
+  el.drawerBreakdown.innerHTML = chips || '<span class="muted">尚未選擇面額</span>';
+  el.drawerModal.querySelector(".modal-card").classList.toggle("shake", !!drawerError);
+}
+
+// ---------- day / game flow ----------
+function endDay(){
+  game.totals.served += game.dayStats.served;
+  game.totals.angry += game.dayStats.angry;
+  game.totals.daysPlayed += 1;
+  game._perfectDay = game.dayStats.angry === 0;
+  if(game._perfectDay && game.hearts < 3) game.hearts += 1;
+  game.state = "daySummary";
+  playSound("dayend");
+}
+function startNextDay(){
+  game.day += 1;
+  game.seatsCount = seatsForDay(game.day);
+  game.seats = new Array(game.seatsCount).fill(null);
+  game.dayTimeLeft = 70000;
+  game.spawnTimer = 1500;
+  game.dayStats = { served:0, angry:0, moneyToday:0, scoreToday:0 };
+  game.state = "playing";
+  applySeatVisibility();
+}
+function triggerGameOver(){
+  game.state = "gameOver";
+  playSound("gameover");
+}
+function startGame(){
+  ensureAudio();
+  game.state = "playing";
+  game.day = 1;
+  game.dayTimeLeft = 70000;
+  game.spawnTimer = 1500;
+  game.seatsCount = seatsForDay(1);
+  game.seats = new Array(game.seatsCount).fill(null);
+  game.money = 0; game.score = 0; game.hearts = 3; game.combo = 0; game.bestCombo = 0;
+  game.dayStats = { served:0, angry:0, moneyToday:0, scoreToday:0 };
+  game.totals = { served:0, angry:0, daysPlayed:0 };
+  game._perfectDay = false;
+  stations.coffee = { queue:[], current:null };
+  stations.cake = { queue:[], current:null };
+  stations.bread = { queue:[], current:null };
+  passTray.length = 0;
+  drawerSeatIdx = null;
+  clearCarried();
+  clearAllCustomerVisuals();
+  applySeatVisibility();
+  renderShelfVisual();
+  el.controlHint.classList.remove("hidden");
+}
+
+// ---------- main simulation tick (100ms, unchanged pacing from v1) ----------
+function tick(){
+  if(game.state === "playing"){
+    game.dayTimeLeft = Math.max(0, game.dayTimeLeft - TICK_MS);
+    if(game.dayTimeLeft > 0){
+      game.spawnTimer -= TICK_MS;
+      if(game.spawnTimer <= 0){
+        trySpawnCustomer();
+        const range = spawnRangeForDay(game.day);
+        game.spawnTimer = randRange(range[0], range[1]);
+      }
+    }
+    for(let i=0;i<game.seatsCount;i++){
+      const c = game.seats[i];
+      if(c) updateCustomer(c, i);
+    }
+    Object.keys(stations).forEach(updateStationTick);
+    if(drawerSeatIdx != null){
+      const dc = game.seats[drawerSeatIdx];
+      if(!dc || dc.phase !== "ready_to_pay") closeDrawer();
+    }
+    if(game.dayTimeLeft <= 0 && game.seats.every(function(s){ return s === null; })){
+      endDay();
+    }
+  }
+  renderHud();
+  renderBillboards();
+  renderOverlays();
+  if(stationModalKey) renderStationModal();
+}
+
+/* ========================================================================
+   SECTION 2 — DOM: HUD, billboards, modals (precise-input UI reused from
+   the 2D edition; see README.md §10 "混合式設計").
+   ======================================================================== */
+
+const el = {};
+["dayLabel","timeLabel","moneyLabel","scoreLabel","heartsLabel","comboLabel","muteBtn","controlHint",
+ "worldUI","toastLayer","interactPrompt","interactPromptText",
+ "startModal","startBtn","daySummaryModal","sumServed","sumAngry","sumMoney","sumScore","sumHeartNote","nextDayBtn",
+ "gameOverModal","goDays","goServed","goMoney","goScore","goCombo","restartBtn",
+ "stationModal","stationModalTitle","stationModalLabel","stationModalBadge","stationModalFill","stationModalMenu","stationModalCloseBtn",
+ "shelfModal","shelfList","shelfCloseBtn",
+ "drawerModal","drawerDue","drawerPaid","drawerChangeNeeded","drawerGiven","drawerBreakdown",
+ "drawerClearBtn","drawerConfirmBtn","drawerCloseBtn"
+].forEach(function(id){ el[id] = document.getElementById(id); });
+
+const billboardEls = [0,1,2,3].map(function(i){
+  const wrap = document.getElementById("billboard-"+i);
+  return { wrap:wrap, inner:wrap.querySelector(".billboard-inner"), signature:"" };
+});
+
+function seatBillboardHTML(c){
+  let inner = "";
+  if(c.phase === "thinking"){
+    inner = '<div class="bubble think">···</div>';
+  } else if(c.phase === "ordered"){
+    const chips = c.order.map(function(o){
+      const def = ITEM_BY_ID[o.itemId];
+      return '<span class="order-chip ' + (o.delivered?"done":"") + '">' + def.icon + '</span>';
+    }).join("");
+    inner = '<div class="ticket"><div class="ticket-items">' + chips + '</div><div class="ticket-total mono">$' + c.total + '</div></div>';
+  } else if(c.phase === "eating"){
+    inner = '<div class="bubble eating">🍽️ 享用中…</div>';
+  } else if(c.phase === "ready_to_pay"){
+    inner = '<div class="bubble pay"><div class="bubble" style="padding:3px 8px;">應付 <span class="mono">$' + c.total + '</span></div><button class="pay-btn" data-pay="' + c.seatIdx + '" aria-label="為第 ' + (c.seatIdx+1) + ' 桌開啟收銀機">💰 收款</button></div>';
+  }
+  const showBar = c.phase === "ordered" || c.phase === "ready_to_pay";
+  const bar = showBar ? '<div class="patience-track"><div class="patience-fill"></div></div>' : "";
+  return inner + bar;
+}
+
+function renderBillboards(){
+  for(let i=0;i<4;i++){
+    const ref = billboardEls[i];
+    const c = i < game.seatsCount ? game.seats[i] : null;
+    if(!c){ ref.wrap.classList.remove("show"); ref.signature=""; continue; }
+    const sig = c.id + ":" + c.phase + ":" + c.order.map(function(o){ return o.delivered?1:0; }).join("");
+    if(sig !== ref.signature){
+      ref.signature = sig;
+      ref.inner.innerHTML = seatBillboardHTML(c);
+      ref.patienceFill = ref.inner.querySelector(".patience-fill");
+    }
+    ref.inner.classList.toggle("shake", !!c.flashError);
+    if(ref.patienceFill){
+      const pct = clamp(c.patience / c.patienceMax * 100, 0, 100);
+      ref.patienceFill.style.width = pct + "%";
+      ref.patienceFill.classList.toggle("warn", pct <= 60 && pct > 30);
+      ref.patienceFill.classList.toggle("danger", pct <= 30);
+    }
+  }
+}
+
+function renderHud(){
+  el.dayLabel.textContent = game.day + " 天";
+  el.timeLabel.textContent = fmtTime(game.dayTimeLeft);
+  el.moneyLabel.textContent = "$" + game.money;
+  el.scoreLabel.textContent = String(game.score);
+  el.heartsLabel.textContent = "♥".repeat(game.hearts) + "♡".repeat(3-game.hearts);
+  el.comboLabel.textContent = "🔥 x" + game.combo;
+  el.comboLabel.classList.toggle("show", game.combo > 1);
+}
+
+function anyBlockingModalOpen(){
+  return game.state !== "playing" || drawerSeatIdx != null || !!stationModalKey || shelfModalOpen;
+}
+
+function visibleModal(){
+  return Array.from(document.querySelectorAll(".modal-overlay")).find(function(modal){
+    return !modal.classList.contains("hidden");
+  }) || null;
+}
+
+function modalFocusableElements(modal){
+  return Array.from(modal.querySelectorAll("button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex='-1'])"))
+    .filter(function(node){ return node.getClientRects().length > 0; });
+}
+
+function focusModal(modal){
+  if(!modal) return;
+  const focusable = modalFocusableElements(modal);
+  const target = focusable[0] || modal.querySelector(".modal-card");
+  if(target) target.focus();
+}
+
+function focusGameplay(){
+  if(game.state === "playing") canvas.focus();
+}
+
+function trapModalTab(e, modal){
+  const focusable = modalFocusableElements(modal);
+  if(focusable.length === 0){
+    e.preventDefault();
+    const card = modal.querySelector(".modal-card");
+    if(card) card.focus();
+    return;
+  }
+  const first = focusable[0], last = focusable[focusable.length-1];
+  if(e.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))){
+    e.preventDefault();
+    last.focus();
+  } else if(!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))){
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+let lastVisibleModalId = null;
+function renderOverlays(){
+  el.startModal.classList.toggle("hidden", game.state !== "start");
+  el.daySummaryModal.classList.toggle("hidden", game.state !== "daySummary");
+  el.gameOverModal.classList.toggle("hidden", game.state !== "gameOver");
+  el.worldUI.classList.toggle("dimmed", anyBlockingModalOpen());
+  canvas.classList.toggle("dimmed", anyBlockingModalOpen());
+  const modal = visibleModal();
+  if(modal && modal.id !== lastVisibleModalId) focusModal(modal);
+  lastVisibleModalId = modal ? modal.id : null;
+
+  if(game.state === "daySummary"){
+    el.sumServed.textContent = String(game.dayStats.served);
+    el.sumAngry.textContent = String(game.dayStats.angry);
+    el.sumMoney.textContent = "$" + game.dayStats.moneyToday;
+    el.sumScore.textContent = String(game.dayStats.scoreToday);
+    el.sumHeartNote.textContent = game._perfectDay ? "完美的一天！商譽 +1 ♥" : (game.dayStats.angry>0 ? ("有 "+game.dayStats.angry+" 位客人不太開心") : "");
+    el.nextDayBtn.textContent = "進入第 " + (game.day+1) + " 天";
+  }
+  if(game.state === "gameOver"){
+    el.goDays.textContent = String(game.totals.daysPlayed);
+    el.goServed.textContent = String(game.totals.served);
+    el.goMoney.textContent = "$" + game.money;
+    el.goScore.textContent = String(game.score);
+    el.goCombo.textContent = String(game.bestCombo);
+  }
+}
+
+function showWorldToast(seatIdx, text, kind){
+  const pos = TABLE_POS[seatIdx];
+  if(!pos) return;
+  showToastAt(pos.x, 1.9, pos.z, text, kind);
+}
+function showPlayerToast(text, kind){
+  showToastAt(player.x, 1.9, player.z, text, kind);
+}
+function showToastAt(x, y, z, text, kind){
+  const p = projectToScreen(x, y, z);
+  if(!p) return;
+  const toast = document.createElement("div");
+  toast.className = "float-toast" + (kind ? " "+kind : "");
+  toast.textContent = text;
+  toast.style.left = p.x + "px";
+  toast.style.top = p.y + "px";
+  el.toastLayer.appendChild(toast);
+  setTimeout(function(){ toast.remove(); }, 1200);
+}
+
+// ---------- station modal ----------
+let stationModalKey = null;
+let stationMenuIndex = 0;
+function openStationModal(key){
+  stationModalKey = key;
+  stationMenuIndex = 0;
+  el.stationModal.classList.remove("hidden");
+  const cat = MENU[key];
+  el.stationModalTitle.textContent = cat.icon + " " + cat.label;
+  el.stationModalMenu.innerHTML = cat.items.map(function(it){
+    return '<button class="menu-btn" data-cat="' + key + '" data-item="' + it.id + '"><span class="menu-icon">' + it.icon + '</span><span class="menu-name">' + it.name + '</span><span class="menu-price mono">$' + it.price + '</span></button>';
+  }).join("");
+  renderStationModal();
+  highlightStationMenu();
+  focusModal(el.stationModal);
+}
+function closeStationModal(){
+  stationModalKey = null;
+  el.stationModal.classList.add("hidden");
+  focusGameplay();
+}
+function highlightStationMenu(){
+  const btns = el.stationModalMenu.querySelectorAll(".menu-btn");
+  btns.forEach(function(btn, i){
+    btn.classList.toggle("kbd-selected", i === stationMenuIndex);
+    if(i === stationMenuIndex && !btn.disabled) btn.focus();
+  });
+  if(btns.length && btns[stationMenuIndex].disabled) el.stationModalCloseBtn.focus();
+}
+function moveStationMenuSelection(delta){
+  if(!stationModalKey) return;
+  const len = MENU[stationModalKey].items.length;
+  stationMenuIndex = (stationMenuIndex + delta + len) % len;
+  highlightStationMenu();
+}
+function confirmStationMenuSelection(){
+  if(!stationModalKey) return;
+  const item = MENU[stationModalKey].items[stationMenuIndex];
+  queueItem(stationModalKey, item.id);
+}
+function renderStationModal(){
+  if(!stationModalKey) return;
+  const st = stations[stationModalKey];
+  const pending = (st.current?1:0) + st.queue.length;
+  el.stationModalBadge.textContent = "排隊 " + pending + "/3";
+  el.stationModalLabel.textContent = st.current ? ITEM_BY_ID[st.current.itemId].name + " 製作中" : "待機中";
+  const pct = st.current ? clamp((1 - st.current.remaining/st.current.total)*100,0,100) : 0;
+  el.stationModalFill.style.width = pct + "%";
+  const disabled = pending >= 3;
+  el.stationModalMenu.querySelectorAll(".menu-btn").forEach(function(btn){ btn.disabled = disabled; });
+}
+
+// ---------- shelf modal ----------
+let shelfModalOpen = false;
+let shelfMenuIndex = 0;
+function openShelfModal(){
+  shelfModalOpen = true;
+  shelfMenuIndex = 0;
+  el.shelfModal.classList.remove("hidden");
+  renderShelfModalList();
+  focusModal(el.shelfModal);
+  highlightShelfMenu();
+}
+function closeShelfModal(){
+  shelfModalOpen = false;
+  el.shelfModal.classList.add("hidden");
+  focusGameplay();
+}
+function renderShelfModalList(){
+  if(passTray.length === 0){
+    el.shelfList.innerHTML = '<div class="shelf-empty">出餐檯是空的</div>';
+    return;
+  }
+  el.shelfList.innerHTML = passTray.map(function(t){
+    const def = ITEM_BY_ID[t.itemId];
+    return '<button class="menu-btn" data-uid="' + t.uid + '"><span class="menu-icon">' + def.icon + '</span><span class="menu-name">' + def.name + '</span></button>';
+  }).join("");
+}
+function highlightShelfMenu(){
+  const btns = el.shelfList.querySelectorAll(".menu-btn");
+  btns.forEach(function(btn, i){
+    btn.classList.toggle("kbd-selected", i === shelfMenuIndex);
+    if(i === shelfMenuIndex) btn.focus();
+  });
+}
+function moveShelfMenuSelection(delta){
+  const len = el.shelfList.querySelectorAll(".menu-btn").length;
+  if(len === 0) return;
+  shelfMenuIndex = (shelfMenuIndex + delta + len) % len;
+  highlightShelfMenu();
+}
+function confirmShelfMenuSelection(){
+  const btn = el.shelfList.querySelectorAll(".menu-btn")[shelfMenuIndex];
+  if(btn) chooseShelfItem(Number(btn.dataset.uid));
+}
+function chooseShelfItem(uid){
+  const idx = passTray.findIndex(function(t){ return t.uid === uid; });
+  if(idx === -1) return;
+  const item = passTray.splice(idx,1)[0];
+  equipCarry(item);
+  playSound("ready");
+  closeShelfModal();
+  renderShelfVisual();
+}
+function pickFromShelf(){
+  if(player.carrying || passTray.length === 0) return;
+  if(passTray.length === 1){
+    const item = passTray.shift();
+    equipCarry(item);
+    playSound("ready");
+    renderShelfVisual();
+  } else {
+    openShelfModal();
+  }
+}
+
+/* ========================================================================
+   SECTION 3 — 3D scene: shop, props, characters, movement, interaction.
+   ======================================================================== */
+
+const canvas = document.getElementById("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x3a2c1f);
+scene.fog = new THREE.Fog(0x3a2c1f, 13, 24);
+
+const camera = new THREE.PerspectiveCamera(46, window.innerWidth/window.innerHeight, 0.1, 60);
+camera.position.set(0, 10.4, 12.6);
+camera.lookAt(0, 0.6, 1.0);
+
+const hemi = new THREE.HemisphereLight(0xfff1d6, 0x4a3626, 1.05);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffdca8, 1.3);
+sun.position.set(-4, 8, 5);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+fill.position.set(5, 4, -3);
+scene.add(fill);
+
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---------- materials ----------
+const MAT = {
+  floor: new THREE.MeshStandardMaterial({ color:0x9a7245, roughness:0.9 }),
+  wall: new THREE.MeshStandardMaterial({ color:0x4a3626, roughness:0.9 }),
+  counter: new THREE.MeshStandardMaterial({ color:0x2b2018, roughness:0.7 }),
+  counterTop: new THREE.MeshStandardMaterial({ color:0xa06b3a, roughness:0.4 }),
+  wood: new THREE.MeshStandardMaterial({ color:0x8a5c34, roughness:0.7 }),
+  chair: new THREE.MeshStandardMaterial({ color:0x5b7b6b, roughness:0.8 }),
+  brass: new THREE.MeshStandardMaterial({ color:0xb07d1f, roughness:0.4, metalness:0.3 }),
+  dark: new THREE.MeshStandardMaterial({ color:0x241a14, roughness:0.6 }),
+};
+
+// ---------- floor & walls ----------
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(15, 12), MAT.floor);
+floor.rotation.x = -Math.PI/2;
+floor.position.set(0, 0, 1);
+scene.add(floor);
+
+const backWall = new THREE.Mesh(new THREE.BoxGeometry(15, 3.2, 0.25), MAT.wall);
+backWall.position.set(0, 1.6, -3.55);
+scene.add(backWall);
+const sideWallL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 2.6, 11), MAT.wall);
+sideWallL.position.set(-7.3, 1.3, 1.5);
+scene.add(sideWallL);
+const sideWallR = sideWallL.clone();
+sideWallR.position.x = 7.3;
+scene.add(sideWallR);
+
+// decorative plants
+function createPlant(x,z){
+  const g = new THREE.Group();
+  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.18,0.3,8), MAT.wood);
+  pot.position.y = 0.15; g.add(pot);
+  const leaves = new THREE.Mesh(new THREE.SphereGeometry(0.32,8,6), new THREE.MeshStandardMaterial({color:0x4a6b4a, roughness:0.9}));
+  leaves.position.y = 0.55; leaves.scale.y = 1.3; g.add(leaves);
+  g.position.set(x,0,z);
+  scene.add(g);
+}
+createPlant(-6.7, -2.6);
+createPlant(6.7, -2.6);
+createPlant(-6.7, 4.8);
+createPlant(6.7, 4.8);
+
+// ---------- counter + stations + shelf + register ----------
+const COUNTER_Z = -2.6;
+const STATION_X = { coffee:-2.9, cake:0, bread:2.9 };
+const SHELF_X = -5.1;
+const REGISTER_X = 5.1;
+const TRASH_POS = { x:-6.1, z:0 };
+
+const counter = new THREE.Mesh(new THREE.BoxGeometry(10.6, 0.9, 0.6), MAT.counter);
+counter.position.set(0, 0.45, COUNTER_Z);
+scene.add(counter);
+const counterTop = new THREE.Mesh(new THREE.BoxGeometry(10.8, 0.06, 0.66), MAT.counterTop);
+counterTop.position.set(0, 0.93, COUNTER_Z);
+scene.add(counterTop);
+
+function createStationProp(key){
+  const g = new THREE.Group();
+  if(key === "coffee"){
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.5,0.42), MAT.dark);
+    base.position.y = 0.25; g.add(base);
+    const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.22,8), MAT.brass);
+    spout.position.set(0,0.55,0.14); g.add(spout);
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.05,8,6), new THREE.MeshStandardMaterial({color:0xffb45c, emissive:0x663300, emissiveIntensity:0.6}));
+    lamp.position.set(0.25,0.52,0.1); g.add(lamp);
+  } else if(key === "cake"){
+    const caseMat = new THREE.MeshPhysicalMaterial({ color:0xffffff, transparent:true, opacity:0.22, roughness:0.15, metalness:0 });
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.72,0.46,0.4), caseMat);
+    box.position.y = 0.28; g.add(box);
+    const colors = [0xE9D18C,0x5A3324,0xC9A86B];
+    [-0.2,0,0.2].forEach(function(ox,i){
+      const cake = new THREE.Mesh(new THREE.ConeGeometry(0.09,0.13,4), new THREE.MeshStandardMaterial({color:colors[i]}));
+      cake.position.set(ox,0.1,0);
+      g.add(cake);
+    });
+  } else {
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.72,0.07,0.38), MAT.wood);
+    shelf.position.y = 0.42; g.add(shelf);
+    [-0.2,0,0.2].forEach(function(ox){
+      const bun = new THREE.Mesh(new THREE.SphereGeometry(0.085,8,6), new THREE.MeshStandardMaterial({color:0xD9A75C}));
+      bun.position.set(ox,0.49,0); bun.scale.y = 0.7;
+      g.add(bun);
+    });
+  }
+  g.position.set(STATION_X[key], 0.9, COUNTER_Z);
+  g.userData = { type:"station", key:key };
+  scene.add(g);
+  return g;
+}
+Object.keys(MENU).forEach(createStationProp);
+
+const shelfProp = new THREE.Mesh(new THREE.BoxGeometry(0.85,0.08,0.44), MAT.wood);
+shelfProp.position.set(SHELF_X, 0.95, COUNTER_Z);
+scene.add(shelfProp);
+const shelfItemsGroup = new THREE.Group();
+shelfItemsGroup.position.set(SHELF_X, 0.99, COUNTER_Z);
+scene.add(shelfItemsGroup);
+
+const registerProp = new THREE.Group();
+const regBase = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.3,0.36), MAT.dark);
+regBase.position.y = 0.15; registerProp.add(regBase);
+const regScreen = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.04), new THREE.MeshStandardMaterial({color:0x8fd4c1, emissive:0x1c4f42, emissiveIntensity:0.5}));
+regScreen.position.set(0,0.42,0.05); regScreen.rotation.x = -0.3; registerProp.add(regScreen);
+registerProp.position.set(REGISTER_X, 0.9, COUNTER_Z);
+scene.add(registerProp);
+
+const trashProp = new THREE.Group();
+const trashBody = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.3,0.24,0.62,10),
+  new THREE.MeshStandardMaterial({ color:0x3F6657, roughness:0.8 })
+);
+trashBody.position.y = 0.31;
+trashProp.add(trashBody);
+const trashLid = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.33,0.33,0.08,10),
+  new THREE.MeshStandardMaterial({ color:0x2A1C14, roughness:0.7 })
+);
+trashLid.position.y = 0.66;
+trashProp.add(trashLid);
+const trashOpening = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.16,0.16,0.02,10),
+  new THREE.MeshStandardMaterial({ color:0x120B07, roughness:1 })
+);
+trashOpening.position.y = 0.71;
+trashProp.add(trashOpening);
+trashProp.position.set(TRASH_POS.x, 0, TRASH_POS.z);
+scene.add(trashProp);
+
+// ---------- tables ----------
+const TABLE_POS = [
+  { x:-3.9, z:1.9 },
+  { x:-1.3, z:1.9 },
+  { x: 1.3, z:1.9 },
+  { x: 3.9, z:1.9 },
+];
+const tableProps = TABLE_POS.map(function(pos){
+  const g = new THREE.Group();
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.48,0.48,0.07,16), MAT.wood);
+  top.position.y = 0.56; g.add(top);
+  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.53,8), MAT.dark);
+  leg.position.y = 0.27; g.add(leg);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.38,0.42,0.38), MAT.chair);
+  seat.position.set(0,0.21,0.62); g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.38,0.4,0.06), MAT.chair);
+  back.position.set(0,0.4,0.82); g.add(back);
+  g.position.set(pos.x, 0, pos.z);
+  scene.add(g);
+  return g;
+});
+const tableObstacleR = 0.75;
+
+// ---------- hotspots & obstacles ----------
+const STATION_HOTSPOTS = {
+  coffee: { x:STATION_X.coffee, z:-1.35 },
+  cake: { x:STATION_X.cake, z:-1.35 },
+  bread: { x:STATION_X.bread, z:-1.35 },
+};
+const SHELF_HOTSPOT = { x:SHELF_X, z:-1.35 };
+const INTERACT_R = 1.25;
+const TABLE_INTERACT_R = 1.35;
+
+const STATIC_OBSTACLES = [
+  { x:STATION_X.coffee, z:COUNTER_Z, r:0.55 },
+  { x:STATION_X.cake, z:COUNTER_Z, r:0.55 },
+  { x:STATION_X.bread, z:COUNTER_Z, r:0.55 },
+  { x:SHELF_X, z:COUNTER_Z, r:0.5 },
+  { x:REGISTER_X, z:COUNTER_Z, r:0.5 },
+  { x:TRASH_POS.x, z:TRASH_POS.z, r:0.38 },
+];
+
+function activeObstacles(excludeTableIdx){
+  const list = STATIC_OBSTACLES.slice();
+  for(let i=0;i<game.seatsCount;i++){
+    if(i === excludeTableIdx) continue;
+    const p = TABLE_POS[i];
+    list.push({ x:p.x, z:p.z, r:tableObstacleR });
+  }
+  return list;
+}
+
+function resolveCollision(x, z, radius, excludeTableIdx){
+  let nx = x, nz = z;
+  const obstacles = activeObstacles(excludeTableIdx);
+  for(let i=0;i<obstacles.length;i++){
+    const o = obstacles[i];
+    const dx = nx-o.x, dz = nz-o.z;
+    const minDist = o.r + radius;
+    const dist = Math.hypot(dx,dz);
+    if(dist < minDist && dist > 0.05){
+      nx = o.x + dx/dist*minDist;
+      nz = o.z + dz/dist*minDist;
+    }
+  }
+  nx = clamp(nx, -6.9, 6.9);
+  nz = clamp(nz, -2.95, 6.6);
+  return { x:nx, z:nz };
+}
+
+// ---------- low-poly character factory ----------
+const ITEM_VISUAL = {
+  americano:{ color:0x6B4328, shape:"cup" },
+  latte:{ color:0xC9A27A, shape:"cup" },
+  cappuccino:{ color:0xD8BFA0, shape:"cup" },
+  cheesecake:{ color:0xE9D18C, shape:"wedge" },
+  chococake:{ color:0x5A3324, shape:"wedge" },
+  tiramisu:{ color:0xC9A86B, shape:"wedge" },
+  croissant:{ color:0xD9A75C, shape:"bun" },
+  bagel:{ color:0xB97B3F, shape:"bun" },
+  cinnamontoast:{ color:0xC77B3E, shape:"bun" },
+};
+function createItemMesh(itemId){
+  const v = ITEM_VISUAL[itemId];
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color:v.color, roughness:0.6 });
+  let mesh;
+  if(v.shape === "cup"){
+    mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.08,0.14,10), mat);
+  } else if(v.shape === "wedge"){
+    mesh = new THREE.Mesh(new THREE.ConeGeometry(0.12,0.13,3), mat);
+  } else {
+    mesh = new THREE.Mesh(new THREE.SphereGeometry(0.1,8,6), mat);
+    mesh.scale.y = 0.65;
+  }
+  g.add(mesh);
+  g.userData.itemId = itemId;
+  return g;
+}
+
+function createCharacter(colors, isPlayer){
+  const group = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color:colors.skin, roughness:0.85 });
+  const shirtMat = new THREE.MeshStandardMaterial({ color:colors.shirt, roughness:0.75 });
+  const hairMat = new THREE.MeshStandardMaterial({ color:colors.hair, roughness:0.9 });
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.31,0.46,8), shirtMat);
+  body.position.y = 0.625;
+  group.add(body);
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.44,0.4,0.4), skinMat);
+  head.position.y = 1.07;
+  group.add(head);
+
+  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.46,0.14,0.42), hairMat);
+  hair.position.y = 1.07 + 0.2 + 0.05;
+  group.add(hair);
+
+  if(isPlayer){
+    const apron = new THREE.Mesh(new THREE.BoxGeometry(0.28,0.34,0.05), new THREE.MeshStandardMaterial({color:0xB07D1F, roughness:0.6}));
+    apron.position.set(0, 0.56, 0.16);
+    group.add(apron);
+  }
+
+  function makeLimb(isArm, side){
+    const pivot = new THREE.Group();
+    const len = isArm ? 0.4 : 0.42;
+    pivot.position.set(side*(isArm?0.3:0.12), isArm?0.8:0.42, 0);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(isArm?0.075:0.095, isArm?0.075:0.095, len, 6), isArm?skinMat:MAT.dark.clone());
+    mesh.position.y = -len/2;
+    pivot.add(mesh);
+    group.add(pivot);
+    return pivot;
+  }
+  const armL = makeLimb(true,-1);
+  const armR = makeLimb(true,1);
+  const legL = makeLimb(false,-1);
+  const legR = makeLimb(false,1);
+
+  const handAnchor = new THREE.Group();
+  handAnchor.position.set(0, -0.38, 0.06);
+  armR.add(handAnchor);
+
+  scene.add(group);
+  return { group, head, body, armL, armR, legL, legR, handAnchor, heldMesh:null, animT:0 };
+}
+
+function pickCustomerColors(){
+  const skins = [0xF2C9A0,0xE0A979,0xC68642,0x8D5524,0xFFDBAC];
+  const hairs = [0x2b2016,0x5b3a21,0x8a6a3a,0x1a1a1a,0xb0b0b0,0x6b2e1e];
+  const shirts = [0x5B7B6B,0xB3432B,0x3F6657,0x6B4A8A,0x2E6A8E,0xB07D1F,0x8E5A5A];
+  function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+  return { skin:pick(skins), hair:pick(hairs), shirt:pick(shirts) };
+}
+
+// ---------- player ----------
+const PLAYER_SPEED = 4.2;
+const player = { x:0, z:-0.7, dir:Math.PI, carrying:null, moving:false };
+const playerChar = createCharacter({ skin:0xE0A979, hair:0x2b2016, shirt:0x8E5A5A }, true);
+playerChar.group.position.set(player.x, 0, player.z);
+
+function equipCarry(trayItem){
+  player.carrying = trayItem.itemId;
+  const mesh = createItemMesh(trayItem.itemId);
+  mesh.scale.setScalar(1.5);
+  playerChar.handAnchor.add(mesh);
+  playerChar.heldMesh = mesh;
+}
+function clearCarried(){
+  if(playerChar.heldMesh){
+    playerChar.handAnchor.remove(playerChar.heldMesh);
+    playerChar.heldMesh = null;
+  }
+  player.carrying = null;
+}
+
+function renderShelfVisual(){
+  while(shelfItemsGroup.children.length) shelfItemsGroup.remove(shelfItemsGroup.children[0]);
+  passTray.slice(0,6).forEach(function(t, i){
+    const m = createItemMesh(t.itemId);
+    m.position.set((i - (Math.min(passTray.length,6)-1)/2) * 0.16, 0, 0);
+    shelfItemsGroup.add(m);
+  });
+}
+
+// ---------- customer visuals ----------
+const customerVisuals = new Map(); // seatIdx -> { char, state, waypoints, speed, animT }
+const ENTRY = { x:0, z:6.2 };
+const DESPAWN = { x:0, z:7.6 };
+
+function spawnCustomerVisual(c, seatIdx){
+  const stale = customerVisuals.get(seatIdx);
+  if(stale){
+    scene.remove(stale.char.group);
+    customerVisuals.delete(seatIdx);
+  }
+  const char = createCharacter(c.colors, false);
+  char.group.position.set(ENTRY.x, 0, ENTRY.z);
+  char.group.rotation.y = Math.PI;
+  const dest = TABLE_POS[seatIdx];
+  customerVisuals.set(seatIdx, {
+    char: char,
+    state: "walkIn",
+    waypoints: [ { x:dest.x, z:dest.z + 0.62 } ],
+    speed: 4.8,
+    animT: 0,
+    seatIdx: seatIdx,
+    burstT: 0,
+  });
+}
+function startLeaving(seatIdx, happy){
+  const v = customerVisuals.get(seatIdx);
+  if(!v) return;
+  v.state = happy ? "leaveHappy" : "leaveAngry";
+  v.burstT = happy ? 0.55 : 0.35;
+  v.speed = happy ? 3.6 : 5.2;
+  v.waypoints = [ { x:0, z:ENTRY.z }, { x:0, z:DESPAWN.z } ];
+}
+function clearAllCustomerVisuals(){
+  customerVisuals.forEach(function(v){ scene.remove(v.char.group); });
+  customerVisuals.clear();
+}
+function applySeatVisibility(){
+  tableProps.forEach(function(g,i){ g.visible = i < game.seatsCount; });
+}
+applySeatVisibility();
+
+// ---------- animation helpers ----------
+function animateWalkCycle(ch, dt, speedFactor){
+  ch.animT += dt * speedFactor;
+  const swing = Math.sin(ch.animT * 9) * 0.55;
+  ch.armL.rotation.x = swing;
+  ch.armR.rotation.x = player.carrying && ch === playerChar ? -0.9 : -swing;
+  ch.legL.rotation.x = -swing;
+  ch.legR.rotation.x = swing;
+}
+function animateIdle(ch, dt){
+  ch.animT += dt;
+  const bob = Math.sin(ch.animT * 2) * 0.02;
+  ch.group.position.y = bob;
+  ch.armL.rotation.x += (0 - ch.armL.rotation.x) * 0.15;
+  ch.armR.rotation.x += ((player.carrying && ch === playerChar ? -0.9 : 0) - ch.armR.rotation.x) * 0.15;
+  ch.legL.rotation.x += (0 - ch.legL.rotation.x) * 0.15;
+  ch.legR.rotation.x += (0 - ch.legR.rotation.x) * 0.15;
+}
+function animateEating(ch, dt){
+  ch.animT += dt * 6;
+  ch.armR.rotation.x = -1.6 + Math.sin(ch.animT) * 0.3;
+  ch.group.rotation.z = Math.sin(ch.animT*0.5) * 0.02;
+}
+function animateHappyBurst(ch, dt){
+  ch.animT += dt * 10;
+  ch.group.position.y = Math.max(0, Math.sin(ch.animT*2)) * 0.14;
+  ch.armL.rotation.x = -2.4;
+  ch.armR.rotation.x = -2.4;
+}
+function animateAngryBurst(ch, dt){
+  ch.animT += dt * 26;
+  ch.group.rotation.z = Math.sin(ch.animT) * 0.07;
+  ch.armL.rotation.x = -0.4;
+  ch.armR.rotation.x = -0.4;
+}
+
+// ---------- input ----------
+const keys = Object.create(null);
+window.addEventListener("keydown", function(e){
+  const k = e.key.toLowerCase();
+  const modal = visibleModal();
+
+  if(modal && k === "tab"){
+    trapModalTab(e, modal);
+    return;
+  }
+
+  if(stationModalKey){
+    if(k === "arrowup" || k === "arrowdown"){
+      e.preventDefault();
+      moveStationMenuSelection(k === "arrowup" ? -1 : 1);
+    } else if(k === "e" || (k === "enter" && !(e.target instanceof Element && e.target.closest("button")))){
+      e.preventDefault();
+      confirmStationMenuSelection();
+    } else if(k !== "tab" && k !== "shift" && !(["enter"," "].includes(k) && e.target instanceof Element && e.target.closest("button"))){
+      closeStationModal();
+    }
+    return;
+  }
+
+  if(shelfModalOpen){
+    if(k === "arrowup" || k === "arrowdown"){
+      e.preventDefault();
+      moveShelfMenuSelection(k === "arrowup" ? -1 : 1);
+    } else if(k === "enter" && !(e.target instanceof Element && e.target.closest("button"))){
+      e.preventDefault();
+      confirmShelfMenuSelection();
+    } else if(k !== "tab" && k !== "shift" && !(["enter"," "].includes(k) && e.target instanceof Element && e.target.closest("button"))){
+      closeShelfModal();
+    }
+    return;
+  }
+
+  if(drawerSeatIdx != null){
+    const focusedButton = e.target instanceof Element ? e.target.closest("button") : null;
+    const denomButtons = Array.from(el.drawerModal.querySelectorAll(".denom-btn"));
+    const focusedDenomIndex = denomButtons.indexOf(focusedButton);
+    if(["arrowleft","arrowright","arrowup","arrowdown"].includes(k) && focusedDenomIndex !== -1){
+      e.preventDefault();
+      let nextIndex = focusedDenomIndex;
+      if(k === "arrowleft" && focusedDenomIndex % 4 > 0) nextIndex -= 1;
+      if(k === "arrowright" && focusedDenomIndex % 4 < 3 && focusedDenomIndex+1 < denomButtons.length) nextIndex += 1;
+      if(k === "arrowup" && focusedDenomIndex >= 4) nextIndex -= 4;
+      if(k === "arrowdown" && focusedDenomIndex+4 < denomButtons.length) nextIndex += 4;
+      denomButtons[nextIndex].focus();
+    } else if(k === "backspace" || k === "delete"){
+      e.preventDefault();
+      clearDrawer();
+    } else if(k === "enter" && e.shiftKey){
+      e.preventDefault();
+      confirmDrawer();
+    } else if(k === "enter"){
+      e.preventDefault();
+      if(focusedDenomIndex !== -1){
+        addDenom(Number(denomButtons[focusedDenomIndex].dataset.v));
+      } else if(focusedButton === el.drawerClearBtn){
+        clearDrawer();
+      } else if(focusedButton === el.drawerCloseBtn){
+        closeDrawer();
+      }
+    } else if(k !== "tab" && k !== "shift" && !(k === " " && e.target instanceof Element && e.target.closest("button"))){
+      closeDrawer();
+    }
+    return;
+  }
+
+  if(modal){
+    if(k !== "tab" && k !== "shift" && !(["enter"," "].includes(k) && e.target instanceof Element && e.target.closest("button"))){
+      if(shelfModalOpen) closeShelfModal();
+      else if(drawerSeatIdx != null) closeDrawer();
+    }
+    return;
+  }
+
+  if(document.activeElement !== canvas) return;
+  if(["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"].includes(k)) keys[k] = true;
+  if(k === "e"){ handleInteract(); }
+  if(["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright","e"].includes(k)) e.preventDefault();
+});
+window.addEventListener("keyup", function(e){
+  const k = e.key.toLowerCase();
+  keys[k] = false;
+});
+window.addEventListener("blur", function(){
+  Object.keys(keys).forEach(function(k){ keys[k] = false; });
+});
+canvas.addEventListener("click", function(){ canvas.focus(); });
+
+function readMoveInput(){
+  let mx = 0, mz = 0;
+  if(keys["w"] || keys["arrowup"]) mz -= 1;
+  if(keys["s"] || keys["arrowdown"]) mz += 1;
+  if(keys["a"] || keys["arrowleft"]) mx -= 1;
+  if(keys["d"] || keys["arrowright"]) mx += 1;
+  return { mx, mz };
+}
+
+// ---------- hotspot resolution & interaction ----------
+let activeHotspot = null;
+function dist2(ax,az,bx,bz){ const dx=ax-bx, dz=az-bz; return dx*dx+dz*dz; }
+
+function updateHotspots(){
+  if(game.state !== "playing" || anyBlockingModalOpen()){
+    activeHotspot = null;
+    el.interactPrompt.classList.remove("show");
+    return;
+  }
+  let best = null, bestDist = Infinity;
+  Object.keys(STATION_HOTSPOTS).forEach(function(key){
+    const pos = STATION_HOTSPOTS[key];
+    const d = dist2(player.x, player.z, pos.x, pos.z);
+    if(d < INTERACT_R*INTERACT_R && d < bestDist){ bestDist = d; best = { type:"station", key:key, x:pos.x, z:pos.z }; }
+  });
+  if(passTray.length > 0 && !player.carrying){
+    const pos = SHELF_HOTSPOT;
+    const d = dist2(player.x, player.z, pos.x, pos.z);
+    if(d < INTERACT_R*INTERACT_R && d < bestDist){ bestDist = d; best = { type:"shelf", x:pos.x, z:pos.z }; }
+  }
+  if(player.carrying){
+    const pos = TRASH_POS;
+    const d = dist2(player.x, player.z, pos.x, pos.z);
+    if(d < INTERACT_R*INTERACT_R && d < bestDist){ bestDist = d; best = { type:"trash", x:pos.x, z:pos.z }; }
+  }
+  for(let i=0;i<game.seatsCount;i++){
+    const c = game.seats[i];
+    if(!c || (c.phase !== "ordered" && c.phase !== "ready_to_pay")) continue;
+    const pos = TABLE_POS[i];
+    const d = dist2(player.x, player.z, pos.x, pos.z);
+    if(d < TABLE_INTERACT_R*TABLE_INTERACT_R && d < bestDist){ bestDist = d; best = { type:"table", seatIdx:i, x:pos.x, z:pos.z, phase:c.phase }; }
+  }
+  activeHotspot = best;
+  renderInteractPrompt();
+}
+
+function renderInteractPrompt(){
+  if(!activeHotspot){ el.interactPrompt.classList.remove("show"); return; }
+  let text = "";
+  if(activeHotspot.type === "station"){
+    text = "製作「" + MENU[activeHotspot.key].label + "」";
+  } else if(activeHotspot.type === "shelf"){
+    text = "拿取餐點 (" + passTray.length + ")";
+  } else if(activeHotspot.type === "trash"){
+    text = "丟棄手上餐點";
+  } else if(activeHotspot.type === "table"){
+    if(activeHotspot.phase === "ready_to_pay") text = "收銀結帳";
+    else if(player.carrying) text = "送上 " + ITEM_BY_ID[player.carrying].name;
+    else text = "這桌正在等餐點";
+  }
+  el.interactPromptText.textContent = text;
+  const p = projectToScreen(activeHotspot.x, 1.75, activeHotspot.z);
+  if(p){
+    el.interactPrompt.style.left = p.x + "px";
+    el.interactPrompt.style.top = p.y + "px";
+    el.interactPrompt.classList.add("show");
+  }
+}
+
+function handleInteract(){
+  if(game.state === "start"){ startGame(); return; }
+  if(!activeHotspot) return;
+  if(activeHotspot.type === "station") openStationModal(activeHotspot.key);
+  else if(activeHotspot.type === "shelf") pickFromShelf();
+  else if(activeHotspot.type === "trash"){
+    const discardedName = ITEM_BY_ID[player.carrying].name;
+    clearCarried();
+    playTone(420,0,0.08,"triangle",0.07);
+    showPlayerToast("已丟棄 " + discardedName, "cherry");
+  }
+  else if(activeHotspot.type === "table"){
+    if(activeHotspot.phase === "ready_to_pay") openChangeDrawer(activeHotspot.seatIdx);
+    else tryDeliver(activeHotspot.seatIdx);
+  }
+}
+
+function projectToScreen(x,y,z){
+  const v = new THREE.Vector3(x,y,z).project(camera);
+  if(v.z > 1) return null;
+  return {
+    x: (v.x*0.5+0.5) * window.innerWidth,
+    y: (1-(v.y*0.5+0.5)) * window.innerHeight,
+  };
+}
+
+/* ========================================================================
+   SECTION 4 — per-frame loop (movement, customer paths, animation, render)
+   ======================================================================== */
+
+let lastT = performance.now();
+function frame(now){
+  const dt = Math.min((now - lastT)/1000, 0.05);
+  lastT = now;
+
+  if(game.state === "playing" && !anyBlockingModalOpen()){
+    const { mx, mz } = readMoveInput();
+    const len = Math.hypot(mx,mz);
+    if(len > 0.001){
+      const nx = player.x + (mx/len) * PLAYER_SPEED * dt;
+      const nz = player.z + (mz/len) * PLAYER_SPEED * dt;
+      const resolved = resolveCollision(nx, nz, 0.4, -1);
+      player.x = resolved.x; player.z = resolved.z;
+      player.dir = Math.atan2(mx, mz);
+      player.moving = true;
+    } else {
+      player.moving = false;
+    }
+  } else {
+    player.moving = false;
+  }
+  playerChar.group.position.x = player.x;
+  playerChar.group.position.z = player.z;
+  playerChar.group.rotation.y = player.dir;
+  if(player.moving) animateWalkCycle(playerChar, dt, 1.4);
+  else animateIdle(playerChar, dt);
+
+  customerVisuals.forEach(function(v, seatIdx){
+    const ch = v.char;
+    if(v.burstT > 0){
+      v.burstT -= dt;
+      if(v.state === "leaveHappy") animateHappyBurst(ch, dt);
+      else if(v.state === "leaveAngry") animateAngryBurst(ch, dt);
+    } else if(v.waypoints.length > 0){
+      const wp = v.waypoints[0];
+      const dx = wp.x - ch.group.position.x, dz = wp.z - ch.group.position.z;
+      const d = Math.hypot(dx,dz);
+      if(d < 0.08){
+        v.waypoints.shift();
+        if(v.waypoints.length === 0){
+          if(v.state === "walkIn"){
+            v.state = "seated";
+            ch.group.rotation.y = Math.PI;
+          } else if(v.state === "leaveHappy" || v.state === "leaveAngry"){
+            scene.remove(ch.group);
+            customerVisuals.delete(seatIdx);
+            return;
+          }
+        }
+      } else {
+        const step = Math.min(v.speed*dt, d);
+        ch.group.position.x += dx/d*step;
+        ch.group.position.z += dz/d*step;
+        ch.group.rotation.y = Math.atan2(dx,dz);
+        const resolved = resolveCollision(ch.group.position.x, ch.group.position.z, 0.35, seatIdx);
+        ch.group.position.x = resolved.x;
+        ch.group.position.z = resolved.z;
+      }
+      animateWalkCycle(ch, dt, 1.2);
+    } else {
+      const c = game.seats[seatIdx];
+      if(c && c.phase === "eating") animateEating(ch, dt);
+      else animateIdle(ch, dt);
+    }
+  });
+
+  // mutual separation so two customers (e.g. one walking in, one still seated
+  // or walking out) never visibly clip through each other
+  const activeChars = Array.from(customerVisuals.values());
+  for(let i=0;i<activeChars.length;i++){
+    for(let j=i+1;j<activeChars.length;j++){
+      const a = activeChars[i].char.group.position, b = activeChars[j].char.group.position;
+      const dx = b.x-a.x, dz = b.z-a.z;
+      const dist = Math.hypot(dx,dz);
+      const minDist = 0.6;
+      if(dist < minDist && dist > 0.02){
+        const push = (minDist-dist)/2;
+        const ux = dx/dist, uz = dz/dist;
+        a.x -= ux*push; a.z -= uz*push;
+        b.x += ux*push; b.z += uz*push;
+      }
+    }
+  }
+
+  updateHotspots();
+  for(let i=0;i<4;i++){
+    const ref = billboardEls[i];
+    const c = i < game.seatsCount ? game.seats[i] : null;
+    if(!c){ continue; }
+    const vis = customerVisuals.get(i);
+    const pos = vis ? vis.char.group.position : TABLE_POS[i];
+    const p = projectToScreen(pos.x, 1.72, pos.z);
+    if(p){
+      ref.wrap.style.left = p.x + "px";
+      ref.wrap.style.top = p.y + "px";
+      ref.wrap.classList.add("show");
+    } else {
+      ref.wrap.classList.remove("show");
+    }
+  }
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ========================================================================
+   SECTION 5 — wiring
+   ======================================================================== */
+
+el.stationModal.addEventListener("click", function(e){
+  const btn = e.target.closest(".menu-btn");
+  if(!btn || btn.disabled) return;
+  queueItem(btn.dataset.cat, btn.dataset.item);
+});
+el.stationModalCloseBtn.addEventListener("click", closeStationModal);
+
+el.shelfList.addEventListener("click", function(e){
+  const btn = e.target.closest(".menu-btn");
+  if(!btn) return;
+  chooseShelfItem(Number(btn.dataset.uid));
+});
+el.shelfCloseBtn.addEventListener("click", closeShelfModal);
+
+el.worldUI.addEventListener("click", function(e){
+  const payBtn = e.target.closest(".pay-btn");
+  if(payBtn) openChangeDrawer(Number(payBtn.dataset.pay));
+});
+
+el.drawerModal.addEventListener("click", function(e){
+  const denomBtn = e.target.closest(".denom-btn");
+  if(denomBtn) addDenom(Number(denomBtn.dataset.v));
+});
+el.drawerClearBtn.addEventListener("click", clearDrawer);
+el.drawerConfirmBtn.addEventListener("click", confirmDrawer);
+el.drawerCloseBtn.addEventListener("click", closeDrawer);
+
+el.startBtn.addEventListener("click", function(){ startGame(); canvas.focus(); });
+el.nextDayBtn.addEventListener("click", function(){ startNextDay(); canvas.focus(); });
+el.restartBtn.addEventListener("click", function(){ startGame(); canvas.focus(); });
+el.muteBtn.addEventListener("click", function(){
+  muted = !muted;
+  el.muteBtn.textContent = muted ? "🔇" : "🔈";
+  el.muteBtn.setAttribute("aria-label", muted ? "取消靜音" : "靜音");
+  el.muteBtn.setAttribute("aria-pressed", String(muted));
+});
+
+renderHud();
+renderOverlays();
+focusModal(visibleModal());
+setInterval(tick, TICK_MS);
+</script>
+</body>
+</html>
